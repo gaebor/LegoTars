@@ -6,5 +6,15 @@ requires-python = ">=3.13"
 # Windows Bluetooth APIs and the Python standard library; no BLE dependency.
 dependencies = ["numpy>=2.0", "ujson", "pybricks"]
 
+[tool.black]
+line-length = 99
+skip-string-normalization = true
+target-version = ["py38"]
+
 [tool.uv]
 package = false
+
+[dependency-groups]
+dev = [
+    "black>=26.10.1",
+]
