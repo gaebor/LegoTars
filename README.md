@@ -6,7 +6,7 @@ Pybricks EV3 programs for infrared remote driving and PC controlled measurement 
 
 - `tars_ir_control.py` runs on the EV3 and maps the EV3 infrared remote's four channels to motors A-D. Edit `IR_PORT`, `CHANNELS`, and `POWER` near the top to match the robot.
 - `tars_control_brick.py` runs on the EV3. It discovers motors and sensors, reports motor angle and speed and gyro angle and speed on a 10 ms sampling tick, and accepts leased motor duty commands.
-- `tars_control_pc.py` runs on Windows. It connects over Bluetooth Classic, saves measurements as a NumPy array, and sends motor commands on a configurable PC control tick. It uses `pc_agent.py` for the Bluetooth transport.
+- `tars_control_pc.py` runs on Windows. It connects over Bluetooth Classic, saves measurements as a NumPy array, and sends motor commands on a configurable PC control tick. The `tars_bluetooth.py` module provides its Bluetooth transport.
 - `describe.py` summarizes the columns in the newest capture, including means, standard deviations, ranges, and the first and last nonzero values.
 
 ## Setup

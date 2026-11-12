@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pc_agent import BluetoothHub, known_devices
+from tars_bluetooth import BluetoothHub, known_devices
 
 
 class Client:
