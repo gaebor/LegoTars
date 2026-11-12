@@ -1,0 +1,10 @@
+[project]
+name = "tars-pc-control"
+version = "0.1.0"
+description = "Windows Bluetooth Classic PC agent for Pybricks 4.1 EV3"
+requires-python = ">=3.13"
+# Windows Bluetooth APIs and the Python standard library; no BLE dependency.
+dependencies = ["numpy>=2.0", "ujson", "pybricks"]
+
+[tool.uv]
+package = false
