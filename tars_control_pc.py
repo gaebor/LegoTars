@@ -23,9 +23,10 @@ class Client:
         self.hub = hub
         self.pending = {}
         self.next_id = 0
-        self.columns = ["index", "time"]
+        self.columns = ["arrival_time_pc_ms", "packet_index", "index", "time"]
         self.column_specs = []
         self.matrix = []
+        self.packet_index = 0
         self.failure = None
         self.latest = None
         self.latest_received_ns = None
@@ -36,15 +37,19 @@ class Client:
     async def receive(self):
         try:
             while True:
-                msg = json.loads(await self.hub.read_line())
+                line = await self.hub.read_line()
                 received_ns = time.perf_counter_ns()
+                msg = json.loads(line)
                 if "id" in msg:
                     f = self.pending.get(msg["id"])
                     if f and not f.done():
                         f.set_result(msg)
                 elif "samples" in msg:
+                    packet_index = self.packet_index
+                    self.packet_index += 1
+                    arrival_time_pc_ms = received_ns / 1_000_000
                     for seq, t_ms, values in msg["samples"]:
-                        row = [seq, t_ms / 1000.0]
+                        row = [arrival_time_pc_ms, packet_index, seq, t_ms / 1000.0]
                         latest = {"index": seq, "time": t_ms / 1000.0}
                         for port, components in values.items():
                             if len(components) >= 2:
@@ -96,7 +101,7 @@ class Client:
             self.pending.pop(ident, None)
 
     def configure_columns(self, devices):
-        self.columns = ["index", "time"]
+        self.columns = ["arrival_time_pc_ms", "packet_index", "index", "time"]
         self.column_specs = []
 
         def add_pair(port):

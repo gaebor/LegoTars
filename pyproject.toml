@@ -9,7 +9,7 @@ dependencies = ["numpy>=2.0", "ujson", "pybricks"]
 [tool.black]
 line-length = 99
 skip-string-normalization = true
-target-version = ["py38"]
+target-version = ["py312"]
 
 [tool.uv]
 package = false

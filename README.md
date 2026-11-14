@@ -35,7 +35,7 @@ The controller receives the newest sample, with readings such as `sample["A"]["a
 
 ## Captures
 
-By default, captures are saved under `results/tars_control/<timestamp>/`. `measurements.npy` is a float64 matrix. `columns.json` names the columns: sample index, brick elapsed time, then angle and speed for each discovered motor and gyro. The index makes skipped sampling sequence numbers visible. Additional CSV files record PC control tick timing and command acknowledgments.
+By default, captures are saved under `results/tars_control/<timestamp>/`. `measurements.npy` is a float64 matrix. Its first four columns are `arrival_time_pc_ms`, `packet_index`, brick sample `index`, and brick elapsed `time`; angle and speed columns for each discovered motor and gyro follow. Rows from the same telemetry packet share the PC monotonic arrival timestamp and packet index. The sample index makes skipped sampling ticks visible. Additional CSV files record PC control tick timing and command acknowledgments.
 
 Describe the newest capture with:
 
