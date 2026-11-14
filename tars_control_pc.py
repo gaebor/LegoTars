@@ -17,16 +17,21 @@ import numpy as np
 
 from tars_bluetooth import BluetoothHub, known_devices
 
+MISSING_INT32 = -(2**31)
+MOTOR_LIMITS_PATH = Path("results/tars_motion/motor_limits.json")
+MOTOR_LIMITS_VERSION = 2
+
 
 class Client:
     def __init__(self, hub):
         self.hub = hub
         self.pending = {}
         self.next_id = 0
-        self.columns = ["arrival_time_pc_ms", "packet_index", "index", "time"]
+        self.columns = ["arrival_time_pc_ms", "packet_index", "index", "brick_time_ms"]
         self.column_specs = []
         self.matrix = []
         self.packet_index = 0
+        self.capture_start_ns = None
         self.failure = None
         self.latest = None
         self.latest_received_ns = None
@@ -45,11 +50,13 @@ class Client:
                     if f and not f.done():
                         f.set_result(msg)
                 elif "samples" in msg:
+                    if self.capture_start_ns is None:
+                        self.capture_start_ns = received_ns
                     packet_index = self.packet_index
                     self.packet_index += 1
-                    arrival_time_pc_ms = received_ns / 1_000_000
+                    arrival_time_pc_ms = round((received_ns - self.capture_start_ns) / 1_000_000)
                     for seq, t_ms, values in msg["samples"]:
-                        row = [arrival_time_pc_ms, packet_index, seq, t_ms / 1000.0]
+                        row = [arrival_time_pc_ms, packet_index, int(seq), int(t_ms)]
                         latest = {"index": seq, "time": t_ms / 1000.0}
                         for port, components in values.items():
                             if len(components) >= 2:
@@ -60,9 +67,12 @@ class Client:
                         for port, component in self.column_specs:
                             vals = values.get(port, [])
                             try:
-                                row.append(float(vals[int(component)]))
-                            except (IndexError, TypeError, ValueError):
-                                row.append(math.nan)
+                                value = vals[int(component)]
+                                if value is None or not math.isfinite(float(value)):
+                                    raise ValueError("missing sensor value")
+                                row.append(int(value))
+                            except (IndexError, TypeError, ValueError, OverflowError):
+                                row.append(MISSING_INT32)
                         self.matrix.append(row)
                         self.latest = latest
                         self.latest_received_ns = received_ns
@@ -101,7 +111,12 @@ class Client:
             self.pending.pop(ident, None)
 
     def configure_columns(self, devices):
-        self.columns = ["arrival_time_pc_ms", "packet_index", "index", "time"]
+        self.columns = [
+            "arrival_time_pc_ms",
+            "packet_index",
+            "index",
+            "brick_time_ms",
+        ]
         self.column_specs = []
 
         def add_pair(port):
@@ -192,9 +207,7 @@ async def control_loop(client, args, motor_ports, controller):
                     for item in line.split(","):
                         port, duty = item.split("=", 1)
                         manual_duties.update(
-                            validate_duties(
-                                {port.strip().upper(): float(duty)}, motor_ports
-                            )
+                            validate_duties({port.strip().upper(): float(duty)}, motor_ports)
                         )
 
         sample = client.latest
@@ -251,14 +264,31 @@ async def session(args):
         await hub.connect()
         await hub.run()
         ready = json.loads(await asyncio.wait_for(hub.read_line(), 60))
-        if ready != {"ready": "ev3-tars-control-2"}:
+        if ready != {"ready": "ev3-tars-control-7"}:
             raise RuntimeError("Upload tars_control_brick.py and run it on the EV3")
         receive_task = asyncio.create_task(client.receive())
         devices = (await client.request("hello"))["devices"]
         client.configure_columns(devices)
-        motor_ports = {
-            port for port in "ABCD" if devices.get(port, {}).get("type") == "motor"
-        }
+        motor_ports = {port for port in "ABCD" if devices.get(port, {}).get("type") == "motor"}
+        if MOTOR_LIMITS_PATH.exists():
+            saved_limits = json.loads(MOTOR_LIMITS_PATH.read_text(encoding="utf-8"))
+            version = saved_limits.get("_version", 1)
+            limits = {port: saved_limits[port] for port in motor_ports if port in saved_limits}
+            if version < MOTOR_LIMITS_VERSION:
+                for port in motor_ports.intersection("AD"):
+                    if port in limits:
+                        bounds = limits[port]
+                        limits[port] = {"min": bounds.get("max"), "max": bounds.get("min")}
+            if limits:
+                await client.request("set_motor_limits", limits=limits)
+                MOTOR_LIMITS_PATH.write_text(
+                    json.dumps({"_version": MOTOR_LIMITS_VERSION, **limits}, indent=2),
+                    encoding="utf-8",
+                )
+                (out / "motor_limits.json").write_text(
+                    json.dumps({"_version": MOTOR_LIMITS_VERSION, **limits}, indent=2),
+                    encoding="utf-8",
+                )
         (out / "columns.json").write_text(json.dumps(client.columns, indent=2), encoding="utf-8")
         (out / "devices.json").write_text(json.dumps(devices, indent=2), encoding="utf-8")
         await client.request("stream")
@@ -279,7 +309,7 @@ async def session(args):
             except asyncio.CancelledError:
                 pass
         await hub.disconnect()
-        array = np.asarray(client.matrix, dtype=np.float64).reshape((-1, len(client.columns)))
+        array = np.asarray(client.matrix, dtype=np.int32).reshape((-1, len(client.columns)))
         np.save(out / "measurements.npy", array)
         (out / "columns.json").write_text(json.dumps(client.columns, indent=2), encoding="utf-8")
         with (out / "commands.csv").open("w", newline="", encoding="utf-8") as f:
@@ -311,7 +341,9 @@ def main():
     parser.add_argument("--address")
     parser.add_argument("--output", default="results/tars_control")
     parser.add_argument("--control-ms", type=int, default=100, help="PC controller tick period")
-    parser.add_argument("--controller", help="Python file defining control(sample) -> {port: duty}")
+    parser.add_argument(
+        "--controller", help="Python file defining control(sample) -> {port: duty}"
+    )
     args = parser.parse_args()
     if not 10 <= args.control_ms <= 1000:
         parser.error("--control-ms must be from 10 to 1000")

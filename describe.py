@@ -34,12 +34,15 @@ def main() -> None:
     data = np.load(capture / "measurements.npy")
     columns = json.loads((capture / "columns.json").read_text(encoding="utf-8"))
 
-    time_values = data[:, columns.index("time")]
+    if "brick_time_ms" in columns:
+        time_values = data[:, columns.index("brick_time_ms")] / 1000.0
+    else:
+        time_values = data[:, columns.index("time")]
 
     print(f"Capture: {capture}")
     for index, name in enumerate(columns):
         values = data[:, index]
-        finite = np.isfinite(values)
+        finite = np.isfinite(values) & (values != np.iinfo(np.int32).min)
         measured = values[finite]
         if not measured.size:
             print(f"\n{name}: no finite samples")
